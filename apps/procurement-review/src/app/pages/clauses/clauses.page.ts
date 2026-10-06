@@ -43,6 +43,7 @@ import {
 import {
   ClarificationTagComponent,
   ClauseTypeTagComponent,
+  OpinionTagComponent,
   StatusTagComponent,
 } from "../../shared/status-tag.component";
 
@@ -66,6 +67,7 @@ import {
     StatusTagComponent,
     ClauseTypeTagComponent,
     ClarificationTagComponent,
+    OpinionTagComponent,
   ],
   templateUrl: "./clauses.page.html",
   styleUrl: "./clauses.page.scss",
@@ -105,6 +107,7 @@ export class ClausesPage {
     );
   });
   readonly canReview = computed(() => this.role() !== "procurement");
+  readonly canConfirm = computed(() => this.role() === "chair");
   readonly clauseRisks = computed(() => {
     const clause = this.selectedClause();
     if (!clause) {
@@ -216,9 +219,29 @@ export class ClausesPage {
           comment: value.comment,
           reviewer: roleProfiles[this.role()].name,
           role: this.role(),
+          baseRevision: response.revision,
         },
       }),
     );
+  }
+
+  confirmOpinion(opinionId: string): void {
+    if (!this.canConfirm()) {
+      return;
+    }
+    this.store.dispatch(
+      ReviewActions.confirmOpinion({
+        input: {
+          opinionId,
+          actor: roleProfiles[this.role()].name,
+          role: this.role(),
+        },
+      }),
+    );
+  }
+
+  hasInvalidated(response: SupplierResponse): boolean {
+    return response.reviews.some((review) => review.status === "invalidated");
   }
 
   openClarificationDialog(): void {

@@ -11,6 +11,11 @@ export type ReviewRole =
   | "chair";
 export type ClarificationStatus = "open" | "responded" | "overdue";
 export type VersionStatus = "draft" | "finalized";
+export type OpinionStatus = "submitted" | "confirmed" | "invalidated" | "conflict";
+export type BatchStatus = "complete" | "failed" | "recovered";
+export type BatchSource = "receipt" | "opinion" | "version" | "import" | "legacy";
+export type BatchItemKind = "receipt" | "opinion" | "version";
+export type ReconsiderationStatus = "open" | "resolved";
 
 export interface Clause {
   id: string;
@@ -34,6 +39,11 @@ export interface ReviewerOpinion {
   score: number;
   comment: string;
   createdAt: string;
+  status: OpinionStatus;
+  baseRevision: number;
+  batchNo?: string;
+  externalId?: string;
+  diffNote?: string;
 }
 
 export interface Clarification {
@@ -47,6 +57,8 @@ export interface Clarification {
   dueAt: string;
   respondedAt?: string;
   status: ClarificationStatus;
+  batchNo?: string;
+  externalId?: string;
 }
 
 export interface SupplierResponse {
@@ -62,6 +74,7 @@ export interface SupplierResponse {
   submittedBy: string;
   submittedAt: string;
   reviewRound: number;
+  revision: number;
   reviews: ReviewerOpinion[];
   clarifications: Clarification[];
 }
@@ -77,6 +90,44 @@ export interface ReviewVersion {
   clauseCount: number;
   responseCount: number;
   contentHash: string;
+  batchNo?: string;
+}
+
+export interface ReviewBatch {
+  id: string;
+  batchNo: string;
+  label: string;
+  source: BatchSource;
+  status: BatchStatus;
+  expectedCount: number;
+  appliedCount: number;
+  skippedCount: number;
+  error?: string;
+  createdAt: string;
+  createdBy: string;
+  recoveredFromId?: string;
+}
+
+export interface ReconsiderationItem {
+  id: string;
+  responseId: string;
+  opinionId: string;
+  reviewer: string;
+  decision: ComplianceStatus;
+  score: number;
+  reason: string;
+  status: ReconsiderationStatus;
+  createdAt: string;
+  resolution?: string;
+  resolvedBy?: string;
+  resolvedAt?: string;
+}
+
+export interface PendingBatchItem {
+  id: string;
+  kind: BatchItemKind;
+  refId: string;
+  label: string;
 }
 
 export interface AuditLog {
@@ -104,6 +155,9 @@ export interface ReviewDatabase {
   versions: ReviewVersion[];
   auditLogs: AuditLog[];
   suppliers: Array<{ id: string; name: string }>;
+  batches: ReviewBatch[];
+  reconsiderations: ReconsiderationItem[];
+  pendingBatchItems: PendingBatchItem[];
 }
 
 export interface AssessmentInput {
@@ -113,6 +167,7 @@ export interface AssessmentInput {
   comment: string;
   reviewer: string;
   role: ReviewRole;
+  baseRevision: number;
 }
 
 export interface ClarificationInput {
@@ -132,4 +187,58 @@ export interface FinalizeVersionInput {
   label: string;
   actor: string;
   role: ReviewRole;
+}
+
+export interface ConfirmOpinionInput {
+  opinionId: string;
+  actor: string;
+  role: ReviewRole;
+}
+
+export interface ResolveReconsiderationInput {
+  reconsiderationId: string;
+  resolution: string;
+  actor: string;
+  role: ReviewRole;
+}
+
+export interface BatchImportItemInput {
+  kind: BatchItemKind;
+  externalId: string;
+  responseId?: string;
+  reviewer?: string;
+  role?: ReviewRole;
+  decision?: ComplianceStatus;
+  score?: number;
+  comment?: string;
+  clarificationId?: string;
+  responseText?: string;
+}
+
+export interface ImportBatchInput {
+  label: string;
+  actor: string;
+  role: ReviewRole;
+  items: BatchImportItemInput[];
+}
+
+export interface BatchImportResult {
+  batch: ReviewBatch;
+  appliedCount: number;
+  skippedCount: number;
+}
+
+export interface RecoverBatchInput {
+  batchId: string;
+  actor: string;
+}
+
+export interface BackfillBatchInput {
+  actor: string;
+  role: ReviewRole;
+}
+
+export interface BackfillBatchResult {
+  assigned: number;
+  remaining: number;
 }

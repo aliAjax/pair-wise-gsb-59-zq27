@@ -3,10 +3,19 @@ import { Apollo, gql } from "apollo-angular";
 import { Observable, map } from "rxjs";
 import type {
   AssessmentInput,
+  BackfillBatchInput,
+  BackfillBatchResult,
+  BatchImportResult,
   Clarification,
   ClarificationInput,
   ClarificationResponseInput,
+  ConfirmOpinionInput,
   FinalizeVersionInput,
+  ImportBatchInput,
+  ReconsiderationItem,
+  RecoverBatchInput,
+  ResolveReconsiderationInput,
+  ReviewBatch,
   ReviewVersion,
   ReviewerOpinion,
   WorkspaceQueryResult,
@@ -39,6 +48,7 @@ const WORKSPACE_QUERY = gql`
           submittedBy
           submittedAt
           reviewRound
+          revision
           reviews {
             id
             responseId
@@ -48,6 +58,11 @@ const WORKSPACE_QUERY = gql`
             score
             comment
             createdAt
+            status
+            baseRevision
+            batchNo
+            externalId
+            diffNote
           }
           clarifications {
             id
@@ -60,6 +75,8 @@ const WORKSPACE_QUERY = gql`
             dueAt
             respondedAt
             status
+            batchNo
+            externalId
           }
         }
       }
@@ -74,6 +91,7 @@ const WORKSPACE_QUERY = gql`
         clauseCount
         responseCount
         contentHash
+        batchNo
       }
       auditLogs {
         id
@@ -96,6 +114,40 @@ const WORKSPACE_QUERY = gql`
         id
         name
       }
+      batches {
+        id
+        batchNo
+        label
+        source
+        status
+        expectedCount
+        appliedCount
+        skippedCount
+        error
+        createdAt
+        createdBy
+        recoveredFromId
+      }
+      reconsiderations {
+        id
+        responseId
+        opinionId
+        reviewer
+        decision
+        score
+        reason
+        status
+        createdAt
+        resolution
+        resolvedBy
+        resolvedAt
+      }
+      pendingBatchItems {
+        id
+        kind
+        refId
+        label
+      }
     }
   }
 `;
@@ -111,6 +163,10 @@ const SUBMIT_ASSESSMENT = gql`
       score
       comment
       createdAt
+      status
+      baseRevision
+      batchNo
+      diffNote
     }
   }
 `;
@@ -128,6 +184,7 @@ const REQUEST_CLARIFICATION = gql`
       dueAt
       respondedAt
       status
+      batchNo
     }
   }
 `;
@@ -145,6 +202,73 @@ const RESPOND_CLARIFICATION = gql`
       dueAt
       respondedAt
       status
+      batchNo
+    }
+  }
+`;
+
+const CONFIRM_OPINION = gql`
+  mutation ConfirmOpinion($input: ConfirmOpinionInput!) {
+    confirmOpinion(input: $input) {
+      id
+      responseId
+      reviewer
+      status
+      batchNo
+    }
+  }
+`;
+
+const RESOLVE_RECONSIDERATION = gql`
+  mutation ResolveReconsideration($input: ResolveReconsiderationInput!) {
+    resolveReconsideration(input: $input) {
+      id
+      status
+      resolution
+      resolvedBy
+      resolvedAt
+    }
+  }
+`;
+
+const IMPORT_BATCH = gql`
+  mutation ImportBatch($input: ImportBatchInput!) {
+    importBatch(input: $input) {
+      batch {
+        id
+        batchNo
+        label
+        source
+        status
+        expectedCount
+        appliedCount
+        skippedCount
+        error
+        createdAt
+        createdBy
+      }
+      appliedCount
+      skippedCount
+    }
+  }
+`;
+
+const RECOVER_BATCH = gql`
+  mutation RecoverBatch($input: RecoverBatchInput!) {
+    recoverBatch(input: $input) {
+      id
+      batchNo
+      status
+      recoveredFromId
+    }
+  }
+`;
+
+const BACKFILL_BATCH_NUMBERS = gql`
+  mutation BackfillBatchNumbers($input: BackfillBatchInput!) {
+    backfillBatchNumbers(input: $input) {
+      assigned
+      remaining
     }
   }
 `;
@@ -162,6 +286,7 @@ const FINALIZE_VERSION = gql`
       clauseCount
       responseCount
       contentHash
+      batchNo
     }
   }
 `;
@@ -241,6 +366,95 @@ export class ReviewGraphqlService {
             throw new Error("GraphQL 未返回澄清回复。");
           }
           return result.data.respondClarification;
+        }),
+      );
+  }
+
+  confirmOpinion(input: ConfirmOpinionInput): Observable<ReviewerOpinion> {
+    return this.apollo
+      .mutate<{ confirmOpinion: ReviewerOpinion }>({
+        mutation: CONFIRM_OPINION,
+        variables: { input },
+        refetchQueries: ["ProcurementReviewWorkspace"],
+      })
+      .pipe(
+        map((result) => {
+          if (!result.data) {
+            throw new Error("GraphQL 未返回确认结果。");
+          }
+          return result.data.confirmOpinion;
+        }),
+      );
+  }
+
+  resolveReconsideration(
+    input: ResolveReconsiderationInput,
+  ): Observable<ReconsiderationItem> {
+    return this.apollo
+      .mutate<{ resolveReconsideration: ReconsiderationItem }>({
+        mutation: RESOLVE_RECONSIDERATION,
+        variables: { input },
+        refetchQueries: ["ProcurementReviewWorkspace"],
+      })
+      .pipe(
+        map((result) => {
+          if (!result.data) {
+            throw new Error("GraphQL 未返回复议办理结果。");
+          }
+          return result.data.resolveReconsideration;
+        }),
+      );
+  }
+
+  importBatch(input: ImportBatchInput): Observable<BatchImportResult> {
+    return this.apollo
+      .mutate<{ importBatch: BatchImportResult }>({
+        mutation: IMPORT_BATCH,
+        variables: { input },
+        refetchQueries: ["ProcurementReviewWorkspace"],
+      })
+      .pipe(
+        map((result) => {
+          if (!result.data) {
+            throw new Error("GraphQL 未返回导入结果。");
+          }
+          return result.data.importBatch;
+        }),
+      );
+  }
+
+  recoverBatch(input: RecoverBatchInput): Observable<ReviewBatch> {
+    return this.apollo
+      .mutate<{ recoverBatch: ReviewBatch }>({
+        mutation: RECOVER_BATCH,
+        variables: { input },
+        refetchQueries: ["ProcurementReviewWorkspace"],
+      })
+      .pipe(
+        map((result) => {
+          if (!result.data) {
+            throw new Error("GraphQL 未返回恢复结果。");
+          }
+          return result.data.recoverBatch;
+        }),
+      );
+  }
+
+  backfillBatchNumbers(
+    input: BackfillBatchInput,
+  ): Observable<BackfillBatchResult> {
+    return this.apollo
+      .mutate<{ backfillBatchNumbers: BackfillBatchResult }>({
+        mutation: BACKFILL_BATCH_NUMBERS,
+        variables: { input },
+        refetchQueries: ["ProcurementReviewWorkspace"],
+      })
+      .pipe(
+        map((result) => {
+          if (!result.data) {
+            throw new Error("GraphQL 未返回补登结果。");
+          }
+          return result.data.backfillBatchNumbers;
         }),
       );
   }

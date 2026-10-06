@@ -3,15 +3,25 @@
     <div>
       <h2>评审版本与小组复核</h2>
       <p>
-        保留每位评审员的独立意见；分歧进入小组复核，已定稿版本不可覆盖。
+        回执、独立意见和定稿版本接入可恢复批次；分歧进入小组复核，已定稿版本不可覆盖。
       </p>
     </div>
-    <p-button
-      label="汇总签字定稿"
-      icon="pi pi-verified"
-      [disabled]="!canFinalize()"
-      (onClick)="openFinalize()"
-    />
+    <div class="inline-actions">
+      <p-button
+        label="批量导入"
+        icon="pi pi-upload"
+        severity="secondary"
+        [outlined]="true"
+        [disabled]="!canManageBatches()"
+        (onClick)="openImport()"
+      />
+      <p-button
+        label="汇总签字定稿"
+        icon="pi pi-verified"
+        [disabled]="!canFinalize()"
+        (onClick)="openFinalize()"
+      />
+    </div>
   </header>
 
   <div class="version-summary">
@@ -31,6 +41,30 @@
       <span>未完成澄清</span>
       <strong class="danger">{{ pendingClarifications().length }}</strong>
     </article>
+    <article>
+      <span>旧数据待核</span>
+      <strong [class.danger]="pendingBatchItems().length > 0">
+        {{ pendingBatchItems().length }}
+      </strong>
+    </article>
+    <article>
+      <span>待复议项</span>
+      <strong [class.danger]="openReconsiderations().length > 0">
+        {{ openReconsiderations().length }}
+      </strong>
+    </article>
+    <article>
+      <span>失效待重算</span>
+      <strong [class.danger]="staleRecalc().length > 0">
+        {{ staleRecalc().length }}
+      </strong>
+    </article>
+    <article>
+      <span>冲突草稿</span>
+      <strong [class.danger]="conflictDrafts().length > 0">
+        {{ conflictDrafts().length }}
+      </strong>
+    </article>
   </div>
 
   <div class="review-grid">
@@ -38,7 +72,7 @@
       <div class="data-panel-header">
         <div>
           <h3>版本历史</h3>
-          <p>定稿版本保存内容哈希和签署人</p>
+          <p>定稿版本保存内容哈希、批次号和签署人</p>
         </div>
       </div>
       <p-table [value]="versions()" responsiveLayout="scroll">
@@ -49,6 +83,7 @@
             <th>状态</th>
             <th>响应项</th>
             <th>内容哈希</th>
+            <th>批次号</th>
             <th>创建信息</th>
           </tr>
         </ng-template>
@@ -70,6 +105,7 @@
               </div>
             </td>
             <td class="mono">{{ version.contentHash }}</td>
+            <td class="mono">{{ version.batchNo ?? "待核" }}</td>
             <td>
               {{ version.createdBy }}
               <div class="table-secondary">
@@ -122,6 +158,220 @@
     </aside>
   </div>
 
+  <section class="data-panel batch-panel">
+    <div class="data-panel-header">
+      <div>
+        <h3>批次台账</h3>
+        <p>回执、意见、定稿和导入共用批次号；失败批次可从最近完整批次恢复。</p>
+      </div>
+      <p-tag
+        [value]="failedCount() + ' 个失败批次'"
+        [severity]="failedCount() > 0 ? 'danger' : 'success'"
+      />
+    </div>
+    @if (batches().length) {
+      <p-table [value]="batches()" responsiveLayout="scroll">
+        <ng-template pTemplate="header">
+          <tr>
+            <th>批次号</th>
+            <th>名称</th>
+            <th>来源</th>
+            <th>状态</th>
+            <th>条目</th>
+            <th>登记信息</th>
+            <th>操作</th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-batch>
+          <tr>
+            <td class="mono">{{ batch.batchNo }}</td>
+            <td>
+              <span class="table-primary">{{ batch.label }}</span>
+              @if (batch.error) {
+                <div class="table-secondary danger-text">{{ batch.error }}</div>
+              }
+              @if (batch.recoveredFromId) {
+                <div class="table-secondary">
+                  已回退到完整批次 {{ batch.recoveredFromId }}
+                </div>
+              }
+            </td>
+            <td>{{ sourceLabel(batch.source) }}</td>
+            <td><app-batch-tag [status]="batch.status" /></td>
+            <td>
+              应用 {{ batch.appliedCount }} / {{ batch.expectedCount }}
+              @if (batch.skippedCount > 0) {
+                <div class="table-secondary">跳过重复 {{ batch.skippedCount }} 项</div>
+              }
+            </td>
+            <td>
+              {{ batch.createdBy }}
+              <div class="table-secondary">
+                {{ batch.createdAt | date: "yyyy-MM-dd HH:mm" }}
+              </div>
+            </td>
+            <td>
+              @if (batch.status === "failed") {
+                <p-button
+                  label="从完整批次恢复"
+                  icon="pi pi-replay"
+                  size="small"
+                  severity="warn"
+                  [outlined]="true"
+                  (onClick)="recoverBatch(batch.id)"
+                />
+              }
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    } @else {
+      <p class="empty-copy">尚未登记批次，回执、意见、定稿或导入后会自动生成。</p>
+    }
+  </section>
+
+  <div class="review-grid batch-side-grid">
+    <section class="data-panel">
+      <div class="data-panel-header">
+        <div>
+          <h3>旧数据待核</h3>
+          <p>缺批次号的回执、意见和定稿先待核，补不齐就拦住定稿。</p>
+        </div>
+        <p-button
+          label="补登批次号"
+          icon="pi pi-pencil"
+          size="small"
+          [outlined]="true"
+          [disabled]="!canManageBatches() || pendingBatchItems().length === 0"
+          (onClick)="backfillBatchNumbers()"
+        />
+      </div>
+      @if (pendingBatchItems().length) {
+        <p-table [value]="pendingBatchItems()" responsiveLayout="scroll">
+          <ng-template pTemplate="header">
+            <tr>
+              <th>类型</th>
+              <th>待核项</th>
+              <th>所属响应</th>
+            </tr>
+          </ng-template>
+          <ng-template pTemplate="body" let-item>
+            <tr>
+              <td>{{ kindLabel(item.kind) }}</td>
+              <td>
+                <span class="table-primary">{{ item.label }}</span>
+                <div class="table-secondary mono">{{ item.id }}</div>
+              </td>
+              <td class="mono">{{ item.refId }}</td>
+            </tr>
+          </ng-template>
+        </p-table>
+      } @else {
+        <p class="empty-copy">旧数据批次号已补齐，可以定稿。</p>
+      }
+    </section>
+
+    <section class="data-panel">
+      <div class="data-panel-header">
+        <div>
+          <h3>复议项</h3>
+          <p>回执更新时已确认意见保留原裁定，在此列出并办结。</p>
+        </div>
+        <p-tag
+          [value]="openReconsiderations().length + ' 项待复议'"
+          [severity]="openReconsiderations().length > 0 ? 'warn' : 'success'"
+        />
+      </div>
+      @if (reconsiderations().length) {
+        <p-table [value]="reconsiderations()" responsiveLayout="scroll">
+          <ng-template pTemplate="header">
+            <tr>
+              <th>复议项</th>
+              <th>原裁定</th>
+              <th>状态</th>
+              <th>登记时间</th>
+              <th>操作</th>
+            </tr>
+          </ng-template>
+          <ng-template pTemplate="body" let-item>
+            <tr>
+              <td>
+                <span class="table-primary">{{ item.reviewer }} · {{ item.responseId }}</span>
+                <div class="table-secondary">{{ item.reason }}</div>
+                @if (item.resolution) {
+                  <div class="table-secondary">复议结论：{{ item.resolution }}</div>
+                }
+              </td>
+              <td>
+                <app-status-tag [status]="item.decision" />
+                <span class="table-secondary"> {{ item.score }} 分</span>
+              </td>
+              <td><app-reconsideration-tag [status]="item.status" /></td>
+              <td>{{ item.createdAt | date: "yyyy-MM-dd HH:mm" }}</td>
+              <td>
+                @if (item.status === "open") {
+                  <p-button
+                    label="办结复议"
+                    size="small"
+                    [outlined]="true"
+                    [disabled]="!canFinalize()"
+                    (onClick)="openResolve(item)"
+                  />
+                }
+              </td>
+            </tr>
+          </ng-template>
+        </p-table>
+      } @else {
+        <p class="empty-copy">暂无复议项。</p>
+      }
+    </section>
+  </div>
+
+  @if (conflictDrafts().length) {
+    <section class="data-panel">
+      <div class="data-panel-header">
+        <div>
+          <h3>冲突草稿</h3>
+          <p>两名评审员同时提交时，先到者占修订，后到者的草稿和差异保留在此。</p>
+        </div>
+        <p-tag [value]="conflictDrafts().length + ' 份草稿'" severity="warn" />
+      </div>
+      <p-table [value]="conflictDrafts()" responsiveLayout="scroll">
+        <ng-template pTemplate="header">
+          <tr>
+            <th>条款</th>
+            <th>供应商</th>
+            <th>评审员</th>
+            <th>草稿结论</th>
+            <th>与在位修订的差异</th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-item>
+          <tr>
+            <td>
+              <span class="mono">{{ item.clause.code }}</span>
+              <div class="table-primary">{{ item.clause.title }}</div>
+            </td>
+            <td>{{ item.response.supplierName }}</td>
+            <td>
+              {{ item.opinion.reviewer }}
+              <div class="table-secondary">
+                {{ item.opinion.createdAt | date: "yyyy-MM-dd HH:mm" }}
+              </div>
+            </td>
+            <td>
+              <app-status-tag [status]="item.opinion.decision" />
+              <span class="table-secondary"> {{ item.opinion.score }} 分</span>
+              <div class="table-secondary">{{ item.opinion.comment }}</div>
+            </td>
+            <td class="diff-cell">{{ item.opinion.diffNote }}</td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </section>
+  }
+
   <section class="data-panel difference-panel">
     <div class="data-panel-header">
       <div>
@@ -159,6 +409,7 @@
                 <div>
                   <strong>{{ review.reviewer }}</strong>
                   <app-status-tag [status]="review.decision" />
+                  <app-opinion-tag [status]="review.status" />
                   <span>{{ review.score }} 分</span>
                   <p>{{ review.comment }}</p>
                 </div>
@@ -193,8 +444,18 @@
         placeholder="例如：技术响应符合性评审汇总"
       />
     </div>
+    @if (finalizeBlockers().length) {
+      <div class="finalize-note blockers">
+        <strong>定稿将被拦截：</strong>
+        <ul>
+          @for (blocker of finalizeBlockers(); track blocker) {
+            <li>{{ blocker }}</li>
+          }
+        </ul>
+      </div>
+    }
     <div class="finalize-note">
-      定稿前系统会检查未完成澄清。定稿后当前版本会生成内容哈希并锁定签署人。
+      定稿前系统会检查未完成澄清、待核批次号和失效待重算意见。定稿后当前版本会生成内容哈希、登记定稿批次并锁定签署人。
     </div>
     <div class="inline-actions dialog-actions">
       <p-button
@@ -238,6 +499,9 @@
         placeholder="登记补充材料、事实说明和答复时间"
       ></textarea>
     </div>
+    <div class="finalize-note">
+      回执登记后归入回执批次并抬高修订号：同组未确认意见失效重算，已确认意见保留原裁定并列入复议。
+    </div>
     <div class="inline-actions dialog-actions">
       <p-button
         label="取消"
@@ -250,6 +514,104 @@
         label="保存回复"
         icon="pi pi-check"
         [disabled]="responseForm.invalid"
+      />
+    </div>
+  </form>
+</p-dialog>
+
+<p-dialog
+  header="批量导入"
+  [modal]="true"
+  [visible]="importVisible()"
+  (visibleChange)="importVisible.set($event)"
+  [style]="{ width: 'min(640px, 94vw)' }"
+>
+  <form [formGroup]="importForm" (ngSubmit)="importBatch()">
+    <div class="field">
+      <label for="import-label">批次名称</label>
+      <input
+        id="import-label"
+        pInputText
+        formControlName="label"
+        placeholder="例如：第二轮回执与意见补录"
+      />
+    </div>
+    <div class="field">
+      <label for="import-payload">导入内容（JSON 数组）</label>
+      <textarea
+        id="import-payload"
+        pTextarea
+        formControlName="payload"
+        rows="10"
+        placeholder="粘贴 opinion / receipt 条目数组"
+      ></textarea>
+      @if (importError(); as message) {
+        <small class="error">{{ message }}</small>
+      }
+    </div>
+    <div class="finalize-note">
+      整批先校验后落库：任一条目失败则整批不入库并登记失败批次，可从完整批次恢复；重复导入只补缺项，已存在的外部编号自动跳过。
+    </div>
+    <div class="inline-actions dialog-actions">
+      <p-button
+        label="填入示例"
+        severity="secondary"
+        [text]="true"
+        (onClick)="fillImportExample()"
+      />
+      <p-button
+        label="取消"
+        severity="secondary"
+        [outlined]="true"
+        (onClick)="importVisible.set(false)"
+      />
+      <p-button
+        type="submit"
+        label="校验并导入"
+        icon="pi pi-upload"
+        [disabled]="importForm.invalid"
+      />
+    </div>
+  </form>
+</p-dialog>
+
+<p-dialog
+  header="办结复议项"
+  [modal]="true"
+  [visible]="resolveVisible()"
+  (visibleChange)="resolveVisible.set($event)"
+  [style]="{ width: 'min(560px, 94vw)' }"
+>
+  <form [formGroup]="resolveForm" (ngSubmit)="resolveReconsideration()">
+    @if (selectedReconsideration(); as item) {
+      <div class="response-context">
+        <strong>{{ item.reviewer }} · {{ item.responseId }}</strong>
+        <span>原裁定保留：{{ item.decision }} · {{ item.score }} 分</span>
+        <p>{{ item.reason }}</p>
+      </div>
+    }
+    <div class="field">
+      <label for="resolve-note">复议结论</label>
+      <textarea
+        id="resolve-note"
+        pTextarea
+        formControlName="resolution"
+        rows="4"
+        placeholder="说明维持或调整原裁定的理由"
+      ></textarea>
+    </div>
+    <div class="inline-actions dialog-actions">
+      <p-button
+        label="取消"
+        severity="secondary"
+        [outlined]="true"
+        (onClick)="resolveVisible.set(false)"
+      />
+      <p-button
+        type="submit"
+        label="办结复议"
+        icon="pi pi-check"
+        [disabled]="resolveForm.invalid"
       />
     </div>
   </form>

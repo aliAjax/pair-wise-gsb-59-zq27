@@ -32,6 +32,38 @@ export const typeDefs = parse(`
     finalized
   }
 
+  enum OpinionStatus {
+    submitted
+    confirmed
+    invalidated
+    conflict
+  }
+
+  enum BatchStatus {
+    complete
+    failed
+    recovered
+  }
+
+  enum BatchSource {
+    receipt
+    opinion
+    version
+    import
+    legacy
+  }
+
+  enum BatchItemKind {
+    receipt
+    opinion
+    version
+  }
+
+  enum ReconsiderationStatus {
+    open
+    resolved
+  }
+
   type Clause {
     id: ID!
     code: String!
@@ -55,6 +87,11 @@ export const typeDefs = parse(`
     score: Int!
     comment: String!
     createdAt: String!
+    status: OpinionStatus!
+    baseRevision: Int!
+    batchNo: String
+    externalId: String
+    diffNote: String
   }
 
   type Clarification {
@@ -68,6 +105,8 @@ export const typeDefs = parse(`
     dueAt: String!
     respondedAt: String
     status: ClarificationStatus!
+    batchNo: String
+    externalId: String
   }
 
   type SupplierResponse {
@@ -83,6 +122,7 @@ export const typeDefs = parse(`
     submittedBy: String!
     submittedAt: String!
     reviewRound: Int!
+    revision: Int!
     reviews: [ReviewerOpinion!]!
     clarifications: [Clarification!]!
   }
@@ -98,6 +138,44 @@ export const typeDefs = parse(`
     clauseCount: Int!
     responseCount: Int!
     contentHash: String!
+    batchNo: String
+  }
+
+  type ReviewBatch {
+    id: ID!
+    batchNo: String!
+    label: String!
+    source: BatchSource!
+    status: BatchStatus!
+    expectedCount: Int!
+    appliedCount: Int!
+    skippedCount: Int!
+    error: String
+    createdAt: String!
+    createdBy: String!
+    recoveredFromId: String
+  }
+
+  type ReconsiderationItem {
+    id: ID!
+    responseId: String!
+    opinionId: String!
+    reviewer: String!
+    decision: ComplianceStatus!
+    score: Int!
+    reason: String!
+    status: ReconsiderationStatus!
+    createdAt: String!
+    resolution: String
+    resolvedBy: String
+    resolvedAt: String
+  }
+
+  type PendingBatchItem {
+    id: ID!
+    kind: BatchItemKind!
+    refId: String!
+    label: String!
   }
 
   type AuditLog {
@@ -130,6 +208,20 @@ export const typeDefs = parse(`
     auditLogs: [AuditLog!]!
     dashboard: DashboardStats!
     suppliers: [Supplier!]!
+    batches: [ReviewBatch!]!
+    reconsiderations: [ReconsiderationItem!]!
+    pendingBatchItems: [PendingBatchItem!]!
+  }
+
+  type BatchImportResult {
+    batch: ReviewBatch!
+    appliedCount: Int!
+    skippedCount: Int!
+  }
+
+  type BackfillBatchResult {
+    assigned: Int!
+    remaining: Int!
   }
 
   input AssessmentInput {
@@ -139,6 +231,7 @@ export const typeDefs = parse(`
     comment: String!
     reviewer: String!
     role: ReviewRole!
+    baseRevision: Int!
   }
 
   input ClarificationInput {
@@ -160,6 +253,49 @@ export const typeDefs = parse(`
     role: ReviewRole!
   }
 
+  input ConfirmOpinionInput {
+    opinionId: ID!
+    actor: String!
+    role: ReviewRole!
+  }
+
+  input ResolveReconsiderationInput {
+    reconsiderationId: ID!
+    resolution: String!
+    actor: String!
+    role: ReviewRole!
+  }
+
+  input BatchImportItemInput {
+    kind: BatchItemKind!
+    externalId: ID!
+    responseId: ID
+    reviewer: String
+    role: ReviewRole
+    decision: ComplianceStatus
+    score: Int
+    comment: String
+    clarificationId: ID
+    responseText: String
+  }
+
+  input ImportBatchInput {
+    label: String!
+    actor: String!
+    role: ReviewRole!
+    items: [BatchImportItemInput!]!
+  }
+
+  input RecoverBatchInput {
+    batchId: ID!
+    actor: String!
+  }
+
+  input BackfillBatchInput {
+    actor: String!
+    role: ReviewRole!
+  }
+
   type Query {
     workspace: WorkspaceData!
     dashboard: DashboardStats!
@@ -169,6 +305,11 @@ export const typeDefs = parse(`
     submitAssessment(input: AssessmentInput!): ReviewerOpinion!
     requestClarification(input: ClarificationInput!): Clarification!
     respondClarification(input: ClarificationResponseInput!): Clarification!
+    confirmOpinion(input: ConfirmOpinionInput!): ReviewerOpinion!
+    resolveReconsideration(input: ResolveReconsiderationInput!): ReconsiderationItem!
+    importBatch(input: ImportBatchInput!): BatchImportResult!
+    recoverBatch(input: RecoverBatchInput!): ReviewBatch!
+    backfillBatchNumbers(input: BackfillBatchInput!): BackfillBatchResult!
     finalizeVersion(input: FinalizeVersionInput!): ReviewVersion!
     resetReviewData: Boolean!
   }

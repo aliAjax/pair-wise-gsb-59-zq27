@@ -2,9 +2,13 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
   AuditLog,
+  BatchSource,
   Clarification,
   Clause,
   ComplianceStatus,
+  OpinionStatus,
+  PendingBatchItem,
+  ReviewBatch,
   ReviewDatabase,
   ReviewRole,
   ReviewerOpinion,
@@ -225,6 +229,7 @@ const reviewFactories: Array<{
   score: number;
   comment: string;
   createdAt: string;
+  status: OpinionStatus;
 }> = [
   {
     responseId: "C002-SUP-A",
@@ -234,6 +239,7 @@ const reviewFactories: Array<{
     score: 0,
     comment: "人员履历满足年限要求，社保材料与履历能够对应。",
     createdAt: "2026-09-28T09:10:00+08:00",
+    status: "confirmed",
   },
   {
     responseId: "C002-SUP-A",
@@ -243,6 +249,7 @@ const reviewFactories: Array<{
     score: 0,
     comment: "安全负责人项目经历需补充合同页或验收证明。",
     createdAt: "2026-09-28T10:25:00+08:00",
+    status: "submitted",
   },
   {
     responseId: "C003-SUP-A",
@@ -252,6 +259,7 @@ const reviewFactories: Array<{
     score: 13,
     comment: "里程碑和交付物完整，风险缓冲充分。",
     createdAt: "2026-09-28T11:10:00+08:00",
+    status: "submitted",
   },
   {
     responseId: "C003-SUP-A",
@@ -261,6 +269,7 @@ const reviewFactories: Array<{
     score: 10,
     comment: "计划完整，但关键人员投入比例未量化。",
     createdAt: "2026-09-28T11:40:00+08:00",
+    status: "submitted",
   },
   {
     responseId: "C004-SUP-B",
@@ -270,6 +279,7 @@ const reviewFactories: Array<{
     score: 21,
     comment: "架构分层清晰，现有系统适配路径可验证。",
     createdAt: "2026-09-28T13:15:00+08:00",
+    status: "submitted",
   },
   {
     responseId: "C004-SUP-B",
@@ -279,6 +289,7 @@ const reviewFactories: Array<{
     score: 15,
     comment: "高可用部署缺少跨机房切换演练记录。",
     createdAt: "2026-09-28T14:02:00+08:00",
+    status: "submitted",
   },
 ];
 
@@ -350,6 +361,7 @@ const makeResponse = (
     submittedBy: `${supplier.name}投标专员`,
     submittedAt: `2026-09-${String(22 + ((clauseIndex + supplierIndex) % 4)).padStart(2, "0")}T16:20:00+08:00`,
     reviewRound: 1,
+    revision: 1,
     reviews: [],
     clarifications: [],
   };
@@ -357,6 +369,7 @@ const makeResponse = (
     .filter((item) => item.responseId === id)
     .map((item, index) => ({
       id: `OP-${id}-${index + 1}`,
+      baseRevision: 1,
       ...item,
     }));
   base.clarifications = clarifications.filter((item) => item.responseId === id);
@@ -437,7 +450,67 @@ const buildSeed = (): ReviewDatabase => ({
   versions: structuredClone(versions),
   auditLogs: structuredClone(auditLogs),
   suppliers: structuredClone(suppliers),
+  batches: [],
+  reconsiderations: [],
+  pendingBatchItems: [],
 });
+
+/**
+ * 扫描回执、独立意见和定稿版本，把缺少批次号的旧数据列入待核清单。
+ * 待核项未补齐前由 finalizeVersion 拦住定稿。
+ */
+export const refreshPendingBatchItems = (database: ReviewDatabase): void => {
+  const pending: PendingBatchItem[] = [];
+  database.responses.forEach((response) => {
+    response.reviews.forEach((opinion) => {
+      if (!opinion.batchNo) {
+        pending.push({
+          id: opinion.id,
+          kind: "opinion",
+          refId: response.id,
+          label: `${response.supplierName} ${response.clauseId} · ${opinion.reviewer} 的独立意见`,
+        });
+      }
+    });
+    response.clarifications.forEach((clarification) => {
+      if (clarification.supplierResponse && !clarification.batchNo) {
+        pending.push({
+          id: clarification.id,
+          kind: "receipt",
+          refId: response.id,
+          label: `${response.supplierName} ${response.clauseId} · 第 ${clarification.round} 轮澄清回执`,
+        });
+      }
+    });
+  });
+  database.versions.forEach((version) => {
+    if (!version.batchNo) {
+      pending.push({
+        id: version.id,
+        kind: "version",
+        refId: version.id,
+        label: `${version.version} ${version.label} 定稿版本`,
+      });
+    }
+  });
+  database.pendingBatchItems = pending;
+};
+
+/** 兼容旧的 runtime-data.json：补齐批次、修订号和意见状态字段。 */
+const normalizeDatabase = (database: ReviewDatabase): ReviewDatabase => {
+  database.batches = database.batches ?? [];
+  database.reconsiderations = database.reconsiderations ?? [];
+  database.pendingBatchItems = database.pendingBatchItems ?? [];
+  database.responses.forEach((response) => {
+    response.revision = response.revision ?? 1;
+    response.reviews.forEach((opinion) => {
+      opinion.status = opinion.status ?? "submitted";
+      opinion.baseRevision = opinion.baseRevision ?? response.revision;
+    });
+  });
+  refreshPendingBatchItems(database);
+  return database;
+};
 
 class ReviewDataStore {
   private readonly runtimePath = join(process.cwd(), "server", "runtime-data.json");
@@ -446,14 +519,14 @@ class ReviewDataStore {
   constructor() {
     if (existsSync(this.runtimePath)) {
       try {
-        this.data = JSON.parse(
-          readFileSync(this.runtimePath, "utf8"),
-        ) as ReviewDatabase;
+        this.data = normalizeDatabase(
+          JSON.parse(readFileSync(this.runtimePath, "utf8")) as ReviewDatabase,
+        );
       } catch {
-        this.data = buildSeed();
+        this.data = normalizeDatabase(buildSeed());
       }
     } else {
-      this.data = buildSeed();
+      this.data = normalizeDatabase(buildSeed());
     }
   }
 
@@ -463,12 +536,13 @@ class ReviewDataStore {
 
   mutate<T>(work: (database: ReviewDatabase) => T): T {
     const result = work(this.data);
+    refreshPendingBatchItems(this.data);
     writeFileSync(this.runtimePath, JSON.stringify(this.data, null, 2), "utf8");
     return result;
   }
 
   reset(): ReviewDatabase {
-    this.data = buildSeed();
+    this.data = normalizeDatabase(buildSeed());
     writeFileSync(this.runtimePath, JSON.stringify(this.data, null, 2), "utf8");
     return this.snapshot();
   }
@@ -498,3 +572,37 @@ export const createOpinionId = (): string =>
 
 export const createClarificationId = (): string =>
   `CL-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+export const createBatchId = (): string =>
+  `BAT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+export const createReconsiderationId = (): string =>
+  `REC-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+/** 登记一个完整批次；同一批次号只登记一次，重复登记时累加应用数。 */
+export const getOrCreateBatch = (
+  database: ReviewDatabase,
+  batchNo: string,
+  source: BatchSource,
+  actor: string,
+  label: string,
+): ReviewBatch => {
+  const existing = database.batches.find((batch) => batch.batchNo === batchNo);
+  if (existing) {
+    return existing;
+  }
+  const batch: ReviewBatch = {
+    id: createBatchId(),
+    batchNo,
+    label,
+    source,
+    status: "complete",
+    expectedCount: 0,
+    appliedCount: 0,
+    skippedCount: 0,
+    createdAt: new Date().toISOString(),
+    createdBy: actor,
+  };
+  database.batches.unshift(batch);
+  return batch;
+};

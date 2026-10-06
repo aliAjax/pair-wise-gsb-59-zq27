@@ -7,6 +7,9 @@ export const initialReviewState: ReviewState = {
   versions: [],
   auditLogs: [],
   suppliers: [],
+  batches: [],
+  reconsiderations: [],
+  pendingBatchItems: [],
   filters: {
     keyword: "",
     category: "",
@@ -74,6 +77,11 @@ export const reviewReducer = createReducer(
     ReviewActions.submitAssessment,
     ReviewActions.requestClarification,
     ReviewActions.respondClarification,
+    ReviewActions.confirmOpinion,
+    ReviewActions.resolveReconsideration,
+    ReviewActions.importBatch,
+    ReviewActions.recoverBatch,
+    ReviewActions.backfillBatchNumbers,
     ReviewActions.finalizeVersion,
     ReviewActions.resetReviewData,
     (state) => ({

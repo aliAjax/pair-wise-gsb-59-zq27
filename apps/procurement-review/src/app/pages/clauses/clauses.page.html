@@ -128,22 +128,51 @@
                     <dt>评审轮次</dt>
                     <dd>第 {{ response.reviewRound }} 轮</dd>
                   </div>
+                  <div>
+                    <dt>当前修订</dt>
+                    <dd class="mono">R{{ response.revision }}</dd>
+                  </div>
                 </dl>
+
+                @if (hasInvalidated(response)) {
+                  <div class="revision-note">
+                    <i class="pi pi-history"></i>
+                    回执更新后同组未确认意见已失效，需按当前修订 R{{ response.revision }} 重新评审。
+                  </div>
+                }
 
                 <h4>独立评审意见</h4>
                 @if (response.reviews.length) {
                   <div class="opinion-list">
                     @for (review of response.reviews; track review.id) {
-                      <article>
+                      <article [class.opinion-stale]="review.status !== 'submitted' && review.status !== 'confirmed'">
                         <header>
                           <strong>{{ review.reviewer }}</strong>
                           <app-status-tag [status]="review.decision" />
+                          <app-opinion-tag [status]="review.status" />
                           @if (clause.type === "scoring") {
                             <span>{{ review.score }} 分</span>
                           }
                           <time>{{ review.createdAt | date: "MM-dd HH:mm" }}</time>
                         </header>
                         <p>{{ review.comment }}</p>
+                        @if (review.diffNote) {
+                          <p class="diff-note">{{ review.diffNote }}</p>
+                        }
+                        <footer>
+                          <small class="mono">
+                            基于 R{{ review.baseRevision }}<span> · </span>{{ review.batchNo ?? "待核（缺批次号）" }}
+                          </small>
+                          @if (canConfirm() && review.status === 'submitted') {
+                            <p-button
+                              label="确认裁定"
+                              icon="pi pi-check-circle"
+                              size="small"
+                              [text]="true"
+                              (onClick)="confirmOpinion(review.id)"
+                            />
+                          }
+                        </footer>
                       </article>
                     }
                   </div>
@@ -174,6 +203,9 @@
                           <blockquote>
                             {{ clarification.supplierResponse }}
                           </blockquote>
+                          <small class="mono">
+                            回执批次：{{ clarification.batchNo ?? "待核（缺批次号）" }}
+                          </small>
                         }
                       </article>
                     }

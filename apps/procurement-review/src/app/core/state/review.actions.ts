@@ -1,10 +1,15 @@
 import { createActionGroup, emptyProps, props } from "@ngrx/store";
 import type {
   AssessmentInput,
+  BackfillBatchInput,
   ClauseFilters,
   ClarificationInput,
   ClarificationResponseInput,
+  ConfirmOpinionInput,
   FinalizeVersionInput,
+  ImportBatchInput,
+  RecoverBatchInput,
+  ResolveReconsiderationInput,
   ReviewRole,
   ReviewState,
 } from "../models/review.models";
@@ -16,7 +21,14 @@ export const ReviewActions = createActionGroup({
     "Load Review Data Success": props<{
       workspace: Pick<
         ReviewState,
-        "clauses" | "versions" | "auditLogs" | "dashboard" | "suppliers"
+        | "clauses"
+        | "versions"
+        | "auditLogs"
+        | "dashboard"
+        | "suppliers"
+        | "batches"
+        | "reconsiderations"
+        | "pendingBatchItems"
       >;
       toast?: string;
     }>(),
@@ -28,6 +40,11 @@ export const ReviewActions = createActionGroup({
     "Submit Assessment": props<{ input: AssessmentInput }>(),
     "Request Clarification": props<{ input: ClarificationInput }>(),
     "Respond Clarification": props<{ input: ClarificationResponseInput }>(),
+    "Confirm Opinion": props<{ input: ConfirmOpinionInput }>(),
+    "Resolve Reconsideration": props<{ input: ResolveReconsiderationInput }>(),
+    "Import Batch": props<{ input: ImportBatchInput }>(),
+    "Recover Batch": props<{ input: RecoverBatchInput }>(),
+    "Backfill Batch Numbers": props<{ input: BackfillBatchInput }>(),
     "Finalize Version": props<{ input: FinalizeVersionInput }>(),
     "Reset Review Data": emptyProps(),
   },

@@ -4,6 +4,7 @@ import type {
   ClauseTreeNode,
   ComplianceStatus,
   ReviewState,
+  ReviewerOpinion,
   SupplierResponse,
 } from "../models/review.models";
 
@@ -33,6 +34,21 @@ export const selectDashboard = createSelector(
 export const selectSuppliers = createSelector(
   selectReviewState,
   (state) => state.suppliers,
+);
+
+export const selectBatches = createSelector(
+  selectReviewState,
+  (state) => state.batches,
+);
+
+export const selectReconsiderations = createSelector(
+  selectReviewState,
+  (state) => state.reconsiderations,
+);
+
+export const selectPendingBatchItems = createSelector(
+  selectReviewState,
+  (state) => state.pendingBatchItems,
 );
 
 export const selectFilters = createSelector(
@@ -70,10 +86,15 @@ export const selectToast = createSelector(
   (state) => state.toast,
 );
 
+export const isActiveOpinion = (opinion: ReviewerOpinion): boolean =>
+  opinion.status === "submitted" || opinion.status === "confirmed";
+
 export const hasReviewDifference = (response: SupplierResponse): boolean => {
   const decisions = new Set(
     response.reviews
-      .filter((review) => review.decision !== "clarification")
+      .filter(
+        (review) => isActiveOpinion(review) && review.decision !== "clarification",
+      )
       .map((review) => review.decision),
   );
   return decisions.size > 1;
@@ -216,3 +237,67 @@ export const responseDecisionSummary = (
   response: SupplierResponse,
 ): ComplianceStatus[] =>
   Array.from(new Set(response.reviews.map((review) => review.decision)));
+
+/** 回执更新后失效且尚未按更新后修订重算的响应。 */
+export const selectStaleRecalcResponses = createSelector(
+  selectClauses,
+  (clauses) =>
+    clauses.flatMap((clause) =>
+      clause.responses
+        .filter((response) => {
+          const invalidated = response.reviews.filter(
+            (opinion) => opinion.status === "invalidated",
+          );
+          if (invalidated.length === 0) {
+            return false;
+          }
+          const maxInvalidatedBase = Math.max(
+            ...invalidated.map((opinion) => opinion.baseRevision),
+          );
+          return !response.reviews.some(
+            (opinion) =>
+              isActiveOpinion(opinion) &&
+              opinion.baseRevision > maxInvalidatedBase,
+          );
+        })
+        .map((response) => ({ clause, response })),
+    ),
+);
+
+/** 后到者保留的冲突草稿。 */
+export const selectConflictDrafts = createSelector(
+  selectClauses,
+  (clauses) =>
+    clauses.flatMap((clause) =>
+      clause.responses.flatMap((response) =>
+        response.reviews
+          .filter((opinion) => opinion.status === "conflict")
+          .map((opinion) => ({ clause, response, opinion })),
+      ),
+    ),
+);
+
+export const selectOpenReconsiderations = createSelector(
+  selectReconsiderations,
+  (items) => items.filter((item) => item.status === "open"),
+);
+
+/** 定稿拦截原因汇总，与服务器 finalizeVersion 的校验保持一致。 */
+export const selectFinalizeBlockers = createSelector(
+  selectPendingClarifications,
+  selectPendingBatchItems,
+  selectStaleRecalcResponses,
+  (pendingClarifications, pendingBatchItems, staleRecalc) => {
+    const blockers: string[] = [];
+    if (pendingClarifications.length > 0) {
+      blockers.push(`${pendingClarifications.length} 项未完成澄清`);
+    }
+    if (pendingBatchItems.length > 0) {
+      blockers.push(`${pendingBatchItems.length} 项旧数据缺批次号（待核）`);
+    }
+    if (staleRecalc.length > 0) {
+      blockers.push(`${staleRecalc.length} 项响应意见失效待重算`);
+    }
+    return blockers;
+  },
+);
