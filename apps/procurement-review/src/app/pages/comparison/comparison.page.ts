@@ -18,7 +18,9 @@ import {
 } from "../../core/models/review.models";
 import { ReviewActions } from "../../core/state/review.actions";
 import {
+  activeOpinions,
   hasReviewDifference,
+  invalidatedOpinions,
   selectClauses,
   selectFilteredClauses,
   selectFilters,
@@ -144,6 +146,14 @@ export class ComparisonPage {
 
   hasDifference(response: SupplierResponse | undefined): boolean {
     return response ? hasReviewDifference(response) : false;
+  }
+
+  activeCount(response: SupplierResponse): number {
+    return activeOpinions(response).length;
+  }
+
+  invalidatedCount(response: SupplierResponse | undefined): number {
+    return response ? invalidatedOpinions(response).length : 0;
   }
 
   isReusedProof(response: SupplierResponse | undefined): boolean {

@@ -7,6 +7,9 @@ export const initialReviewState: ReviewState = {
   versions: [],
   auditLogs: [],
   suppliers: [],
+  batches: [],
+  reconsiderations: [],
+  legacyVerifications: [],
   filters: {
     keyword: "",
     category: "",
@@ -17,6 +20,7 @@ export const initialReviewState: ReviewState = {
   selectedSupplierIds: ["SUP-A", "SUP-B", "SUP-C"],
   loading: false,
   saving: false,
+  toastSeverity: "success",
 };
 
 export const reviewReducer = createReducer(
@@ -28,13 +32,14 @@ export const reviewReducer = createReducer(
   })),
   on(
     ReviewActions.loadReviewDataSuccess,
-    (state, { workspace, toast }) => ({
+    (state, { workspace, toast, toastSeverity }) => ({
       ...state,
       ...workspace,
       loading: false,
       saving: false,
       error: undefined,
       toast,
+      toastSeverity: toastSeverity ?? "success",
     }),
   ),
   on(ReviewActions.loadReviewDataFailure, (state, { error }) => ({
@@ -74,6 +79,12 @@ export const reviewReducer = createReducer(
     ReviewActions.submitAssessment,
     ReviewActions.requestClarification,
     ReviewActions.respondClarification,
+    ReviewActions.confirmAssessment,
+    ReviewActions.discardDraft,
+    ReviewActions.applyDraft,
+    ReviewActions.resolveReconsideration,
+    ReviewActions.verifyLegacyItem,
+    ReviewActions.importReviewBatch,
     ReviewActions.finalizeVersion,
     ReviewActions.resetReviewData,
     (state) => ({

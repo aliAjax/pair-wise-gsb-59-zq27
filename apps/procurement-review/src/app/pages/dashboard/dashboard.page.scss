@@ -150,10 +150,80 @@
   }
 }
 
+.batch-ribbon {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #cfe0de;
+  border-radius: 7px;
+  background: linear-gradient(120deg, #f3f9f8 0%, #eef5f5 100%);
+}
+
+.batch-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+
+  strong {
+    color: #17454d;
+    font-size: 15px;
+  }
+
+  .mono {
+    color: #51707a;
+    font-size: 12px;
+  }
+}
+
+.batch-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+
+  article {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid #d7e2e2;
+    border-radius: 6px;
+    background: #fff;
+
+    strong {
+      color: #17454d;
+      font-size: 20px;
+    }
+
+    .divider {
+      margin: 0 2px;
+      color: #9aabaf;
+      font-size: 14px;
+    }
+
+    span {
+      color: #6b7e85;
+      font-size: 12px;
+    }
+  }
+
+  .danger-metric {
+    border-color: #e8b4ad;
+    background: #fdf3f1;
+
+    strong {
+      color: #b42318;
+    }
+  }
+}
+
 @media (max-width: 900px) {
   .metric-grid,
   .dashboard-grid,
   .dashboard-grid.lower {
     grid-template-columns: 1fr;
+  }
+
+  .batch-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

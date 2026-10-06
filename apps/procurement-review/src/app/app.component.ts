@@ -25,6 +25,7 @@ import {
   selectRole,
   selectSaving,
   selectToast,
+  selectToastSeverity,
 } from "./core/state/review.selectors";
 
 @Component({
@@ -67,6 +68,10 @@ export class AppComponent implements OnInit {
   readonly toast = toSignal(this.store.select(selectToast), {
     initialValue: undefined,
   });
+  readonly toastSeverity = toSignal(
+    this.store.select(selectToastSeverity),
+    { initialValue: "success" as "success" | "warn" | "error" },
+  );
   readonly error = toSignal(this.store.select(selectError), {
     initialValue: undefined,
   });
@@ -100,13 +105,14 @@ export class AppComponent implements OnInit {
       return;
     }
     this.lastToast = key;
+    const severity = this.toastSeverity();
     this.messages.add({
-      severity: "success",
-      summary: "操作完成",
+      severity,
+      summary: severity === "warn" ? "请注意" : "操作完成",
       detail: message,
-      life: 3000,
+      life: severity === "warn" ? 5000 : 3000,
     });
-    setTimeout(() => this.clearMessages(), 3200);
+    setTimeout(() => this.clearMessages(), severity === "warn" ? 5200 : 3200);
   }
 
   notifyError(message: string | undefined, key: string): void {

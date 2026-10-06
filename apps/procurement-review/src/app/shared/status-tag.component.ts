@@ -1,9 +1,12 @@
 import { ChangeDetectionStrategy, Component, input } from "@angular/core";
 import { TagModule } from "primeng/tag";
 import type {
+  BatchStatus,
   ClauseType,
   ClarificationStatus,
   ComplianceStatus,
+  LegacyStatus,
+  OpinionLifecycle,
   VersionStatus,
 } from "../core/models/review.models";
 
@@ -49,6 +52,33 @@ const versionConfig: Record<
 > = {
   draft: { label: "工作版", severity: "warn" },
   finalized: { label: "已定稿", severity: "success" },
+};
+
+const lifecycleConfig: Record<
+  OpinionLifecycle,
+  { label: string; severity: Severity }
+> = {
+  provisional: { label: "待确认", severity: "warn" },
+  confirmed: { label: "已确认", severity: "success" },
+  invalidated: { label: "已失效待重算", severity: "danger" },
+};
+
+const batchStatusConfig: Record<
+  BatchStatus,
+  { label: string; severity: Severity }
+> = {
+  open: { label: "工作批次", severity: "warn" },
+  committed: { label: "已提交", severity: "success" },
+  failed: { label: "导入失败", severity: "danger" },
+};
+
+const legacyStatusConfig: Record<
+  LegacyStatus,
+  { label: string; severity: Severity }
+> = {
+  pending: { label: "待核", severity: "warn" },
+  verified: { label: "已核实", severity: "success" },
+  unverifiable: { label: "补不齐", severity: "danger" },
 };
 
 @Component({
@@ -120,5 +150,59 @@ export class VersionTagComponent {
 
   severity(): Severity {
     return versionConfig[this.status()].severity;
+  }
+}
+
+@Component({
+  selector: "app-lifecycle-tag",
+  imports: [TagModule],
+  template: `<p-tag [value]="label()" [severity]="severity()" />`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class LifecycleTagComponent {
+  readonly status = input<OpinionLifecycle>("provisional");
+
+  label(): string {
+    return lifecycleConfig[this.status()].label;
+  }
+
+  severity(): Severity {
+    return lifecycleConfig[this.status()].severity;
+  }
+}
+
+@Component({
+  selector: "app-batch-status-tag",
+  imports: [TagModule],
+  template: `<p-tag [value]="label()" [severity]="severity()" />`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class BatchStatusTagComponent {
+  readonly status = input<BatchStatus>("open");
+
+  label(): string {
+    return batchStatusConfig[this.status()].label;
+  }
+
+  severity(): Severity {
+    return batchStatusConfig[this.status()].severity;
+  }
+}
+
+@Component({
+  selector: "app-legacy-status-tag",
+  imports: [TagModule],
+  template: `<p-tag [value]="label()" [severity]="severity()" />`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class LegacyStatusTagComponent {
+  readonly status = input<LegacyStatus>("pending");
+
+  label(): string {
+    return legacyStatusConfig[this.status()].label;
+  }
+
+  severity(): Severity {
+    return legacyStatusConfig[this.status()].severity;
   }
 }

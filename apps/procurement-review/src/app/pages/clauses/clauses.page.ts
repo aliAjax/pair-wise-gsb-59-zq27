@@ -29,20 +29,24 @@ import { TextareaModule } from "primeng/textarea";
 import { TreeModule } from "primeng/tree";
 import {
   complianceLabels,
+  lifecycleLabels,
   roleProfiles,
   type Clause,
   type ComplianceStatus,
+  type ReviewerOpinion,
   type SupplierResponse,
 } from "../../core/models/review.models";
 import { ReviewActions } from "../../core/state/review.actions";
 import {
   hasReviewDifference,
+  invalidatedOpinions,
   selectClauseTree,
   selectRole,
 } from "../../core/state/review.selectors";
 import {
   ClarificationTagComponent,
   ClauseTypeTagComponent,
+  LifecycleTagComponent,
   StatusTagComponent,
 } from "../../shared/status-tag.component";
 
@@ -66,6 +70,7 @@ import {
     StatusTagComponent,
     ClauseTypeTagComponent,
     ClarificationTagComponent,
+    LifecycleTagComponent,
   ],
   templateUrl: "./clauses.page.html",
   styleUrl: "./clauses.page.scss",
@@ -105,6 +110,16 @@ export class ClausesPage {
     );
   });
   readonly canReview = computed(() => this.role() !== "procurement");
+  /** 当前评审员在所选响应上因并发保留的草稿。 */
+  readonly myDraft = computed(() => {
+    const response = this.selectedResponse();
+    if (!response) {
+      return undefined;
+    }
+    return response.drafts.find(
+      (draft) => draft.role === this.role() || draft.reviewer === roleProfiles[this.role()].name,
+    );
+  });
   readonly clauseRisks = computed(() => {
     const clause = this.selectedClause();
     if (!clause) {
@@ -120,6 +135,9 @@ export class ClausesPage {
     if (clause.responses.some(hasReviewDifference)) {
       risks.push("不同评审员意见存在分歧，必须保留并进入小组复核");
     }
+    if (clause.responses.some((response) => invalidatedOpinions(response).length > 0)) {
+      risks.push("回执更新后存在已失效意见，必须重算后才能拼入定稿");
+    }
     if (
       clause.responses.some((response) =>
         response.clarifications.some(
@@ -128,6 +146,9 @@ export class ClausesPage {
       )
     ) {
       risks.push("存在逾期澄清，不得直接形成最终结论");
+    }
+    if (clause.responses.some((response) => response.drafts.length > 0)) {
+      risks.push("存在并发提交保留的草稿和差异，需评审员决定应用或丢弃");
     }
     const duplicatedProof = new Set<string>();
     clause.responses.forEach((response) => {
@@ -216,6 +237,56 @@ export class ClausesPage {
           comment: value.comment,
           reviewer: roleProfiles[this.role()].name,
           role: this.role(),
+          baseRevision: response.revision,
+        },
+      }),
+    );
+  }
+
+  confirmOpinion(opinion: ReviewerOpinion): void {
+    if (!this.canReview() || opinion.lifecycle !== "provisional") {
+      return;
+    }
+    this.store.dispatch(
+      ReviewActions.confirmAssessment({
+        input: {
+          opinionId: opinion.id,
+          actor: roleProfiles[this.role()].name,
+          role: this.role(),
+        },
+      }),
+    );
+  }
+
+  applyMyDraft(): void {
+    const draft = this.myDraft();
+    const response = this.selectedResponse();
+    if (!draft || !response) {
+      return;
+    }
+    this.store.dispatch(
+      ReviewActions.applyDraft({
+        input: {
+          draftId: draft.id,
+          actor: roleProfiles[this.role()].name,
+          role: this.role(),
+          baseRevision: response.revision,
+        },
+      }),
+    );
+  }
+
+  discardMyDraft(): void {
+    const draft = this.myDraft();
+    if (!draft) {
+      return;
+    }
+    this.store.dispatch(
+      ReviewActions.discardDraft({
+        input: {
+          draftId: draft.id,
+          actor: roleProfiles[this.role()].name,
+          role: this.role(),
         },
       }),
     );
@@ -257,6 +328,8 @@ export class ClausesPage {
       ?.comment;
   }
 
+  readonly lifecycleLabels = lifecycleLabels;
+
   private findClause(
     nodes: readonly TreeNode<Clause>[],
     clauseId: string,
@@ -286,12 +359,17 @@ export class ClausesPage {
     if (!response) {
       return;
     }
-    const latest = [...response.reviews].sort(
-      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
-    )[0];
+    const reviewerName = roleProfiles[this.role()].name;
+    const ownLatest = [...response.reviews]
+      .filter(
+        (review) =>
+          review.reviewer === reviewerName &&
+          review.lifecycle !== "invalidated",
+      )
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
     this.assessmentForm.reset({
-      decision: latest?.decision ?? response.status,
-      score: latest?.score ?? response.claimedScore,
+      decision: ownLatest?.decision ?? response.status,
+      score: ownLatest?.score ?? response.claimedScore,
       comment: "",
     });
   }

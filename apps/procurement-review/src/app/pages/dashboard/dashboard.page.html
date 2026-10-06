@@ -56,6 +56,32 @@
       </article>
     </div>
 
+    <div class="batch-ribbon">
+      <div class="batch-head">
+        <strong>可恢复批次</strong>
+        <span class="mono">当前批次 {{ stats.activeBatch }}</span>
+        <p-button label="批次台账" size="small" text routerLink="/batches" />
+      </div>
+      <div class="batch-metrics">
+        <article [class.danger-metric]="stats.invalidatedOpinions > 0">
+          <strong>{{ stats.invalidatedOpinions }}</strong>
+          <span>失效待重算意见</span>
+        </article>
+        <article [class.danger-metric]="stats.pendingDrafts > 0">
+          <strong>{{ stats.pendingDrafts }}</strong>
+          <span>并发草稿 / 差异</span>
+        </article>
+        <article [class.danger-metric]="stats.openReconsiderations > 0">
+          <strong>{{ stats.openReconsiderations }}</strong>
+          <span>未关闭复议项</span>
+        </article>
+        <article [class.danger-metric]="stats.pendingLegacyItems + stats.unverifiableLegacyItems > 0">
+          <strong>{{ stats.pendingLegacyItems }}<small class="divider">/</small>{{ stats.unverifiableLegacyItems }}</strong>
+          <span>旧数据待核 / 补不齐</span>
+        </article>
+      </div>
+    </div>
+
     <div class="dashboard-grid">
       <section class="data-panel progress-panel">
         <div class="data-panel-header">

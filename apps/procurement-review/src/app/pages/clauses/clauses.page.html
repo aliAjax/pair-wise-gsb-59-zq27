@@ -128,27 +128,94 @@
                     <dt>评审轮次</dt>
                     <dd>第 {{ response.reviewRound }} 轮</dd>
                   </div>
+                  <div>
+                    <dt>修订号</dt>
+                    <dd class="mono">R{{ response.revision }}</dd>
+                  </div>
+                  <div>
+                    <dt>登记批次</dt>
+                    <dd class="mono">{{ response.batchId || "缺批次号·待核" }}</dd>
+                  </div>
                 </dl>
 
                 <h4>独立评审意见</h4>
                 @if (response.reviews.length) {
                   <div class="opinion-list">
                     @for (review of response.reviews; track review.id) {
-                      <article>
+                      <article [class.invalidated-opinion]="review.lifecycle === 'invalidated'">
                         <header>
                           <strong>{{ review.reviewer }}</strong>
                           <app-status-tag [status]="review.decision" />
+                          <app-lifecycle-tag [status]="review.lifecycle" />
                           @if (clause.type === "scoring") {
                             <span>{{ review.score }} 分</span>
                           }
                           <time>{{ review.createdAt | date: "MM-dd HH:mm" }}</time>
                         </header>
                         <p>{{ review.comment }}</p>
+                        <footer class="opinion-meta">
+                          <span class="mono">{{ review.batchId || "缺批次号·待核" }}</span>
+                          <span>修订号 {{ review.revision }}</span>
+                          @if (review.basedOnMissingMaterial) {
+                            <span class="warn-copy">按缺材料作出</span>
+                          }
+                          @if (
+                            review.lifecycle === "provisional" &&
+                            canReview() &&
+                            (review.role === role() || role() === "chair")
+                          ) {
+                            <p-button
+                              label="确认意见"
+                              size="small"
+                              severity="success"
+                              [outlined]="true"
+                              (onClick)="confirmOpinion(review)"
+                            />
+                          }
+                          @if (review.invalidatedByClarificationId) {
+                            <span class="danger-copy">
+                              回执 {{ review.invalidatedByClarificationId }} 已触发重算
+                            </span>
+                          }
+                          @if (review.reconsiderationId) {
+                            <span class="warn-copy">
+                              原裁定保留 · 复议项 {{ review.reconsiderationId }}
+                            </span>
+                          }
+                        </footer>
                       </article>
                     }
                   </div>
                 } @else {
                   <p class="muted">尚无独立评审意见。</p>
+                }
+
+                @if (myDraft(); as draft) {
+                  <div class="draft-strip">
+                    <header>
+                      <i class="pi pi-exclamation-triangle"></i>
+                      <strong>并发草稿（修订冲突）</strong>
+                      <span>
+                        您基于修订号 {{ draft.baseRevision }} 的意见提交时，当前修订号已为 {{ draft.latestRevision }}
+                      </span>
+                    </header>
+                    <p>{{ draft.comment }}</p>
+                    <div class="inline-actions">
+                      <p-button
+                        label="按最新修订应用"
+                        size="small"
+                        icon="pi pi-check"
+                        (onClick)="applyMyDraft()"
+                      />
+                      <p-button
+                        label="丢弃草稿"
+                        size="small"
+                        severity="secondary"
+                        [outlined]="true"
+                        (onClick)="discardMyDraft()"
+                      />
+                    </div>
+                  </div>
                 }
 
                 <h4>澄清记录</h4>
@@ -175,6 +242,12 @@
                             {{ clarification.supplierResponse }}
                           </blockquote>
                         }
+                        <footer class="opinion-meta">
+                          <span class="mono">发起批次 {{ clarification.batchId || "缺批次号·待核" }}</span>
+                          @if (clarification.receiptBatchId) {
+                            <span class="mono">回执批次 {{ clarification.receiptBatchId }}</span>
+                          }
+                        </footer>
                       </article>
                     }
                   </div>

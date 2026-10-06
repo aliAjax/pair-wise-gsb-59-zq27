@@ -11,6 +11,10 @@ export type ReviewRole =
   | "chair";
 export type ClarificationStatus = "open" | "responded" | "overdue";
 export type VersionStatus = "draft" | "finalized";
+export type OpinionLifecycle = "provisional" | "confirmed" | "invalidated";
+export type BatchStatus = "open" | "committed" | "failed";
+export type LegacyStatus = "pending" | "verified" | "unverifiable";
+export type LegacyEntityType = "response" | "opinion" | "clarification";
 
 export interface ReviewerOpinion {
   id: string;
@@ -21,6 +25,43 @@ export interface ReviewerOpinion {
   score: number;
   comment: string;
   createdAt: string;
+  batchId: string;
+  lifecycle: OpinionLifecycle;
+  basedOnMissingMaterial: boolean;
+  revision: number;
+  invalidatedByClarificationId?: string | null;
+  invalidatedAt?: string | null;
+  reconsiderationId?: string | null;
+}
+
+export interface OpinionDraft {
+  id: string;
+  responseId: string;
+  reviewer: string;
+  role: ReviewRole;
+  decision: ComplianceStatus;
+  score: number;
+  comment: string;
+  createdAt: string;
+  batchId: string;
+  baseRevision: number;
+  latestRevision: number;
+  conflictOpinionId: string;
+}
+
+export interface ReconsiderationItem {
+  id: string;
+  responseId: string;
+  opinionId: string;
+  reviewer: string;
+  batchId: string;
+  reason: string;
+  clarificationId: string;
+  createdAt: string;
+  status: "open" | "resolved";
+  resolution?: string | null;
+  resolvedAt?: string | null;
+  resolvedBy?: string | null;
 }
 
 export interface Clarification {
@@ -29,11 +70,13 @@ export interface Clarification {
   clauseId: string;
   round: number;
   requestText: string;
-  supplierResponse?: string;
+  supplierResponse?: string | null;
   requestedAt: string;
   dueAt: string;
-  respondedAt?: string;
+  respondedAt?: string | null;
   status: ClarificationStatus;
+  batchId: string;
+  receiptBatchId?: string | null;
 }
 
 export interface SupplierResponse {
@@ -49,8 +92,11 @@ export interface SupplierResponse {
   submittedBy: string;
   submittedAt: string;
   reviewRound: number;
+  revision: number;
+  batchId: string;
   reviews: ReviewerOpinion[];
   clarifications: Clarification[];
+  drafts: OpinionDraft[];
 }
 
 export interface Clause {
@@ -83,6 +129,40 @@ export interface ReviewVersion {
   clauseCount: number;
   responseCount: number;
   contentHash: string;
+  batchId?: string | null;
+}
+
+export interface BatchCheckpoint {
+  capturedAt: string;
+  responseCount: number;
+}
+
+export interface ReviewBatch {
+  id: string;
+  code: string;
+  label: string;
+  status: BatchStatus;
+  createdAt: string;
+  createdBy: string;
+  committedAt?: string | null;
+  checkpoint?: BatchCheckpoint | null;
+  lastError?: string | null;
+  opinionCount: number;
+  clarificationCount: number;
+  responseCount: number;
+}
+
+export interface LegacyVerification {
+  id: string;
+  entityType: LegacyEntityType;
+  entityId: string;
+  responseId?: string | null;
+  reason: string;
+  status: LegacyStatus;
+  createdAt: string;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
+  assignedBatchId?: string | null;
 }
 
 export interface AuditLog {
@@ -102,6 +182,12 @@ export interface DashboardStats {
   overdueClarifications: number;
   reusedProofs: number;
   activeVersion: string;
+  invalidatedOpinions: number;
+  pendingDrafts: number;
+  openReconsiderations: number;
+  pendingLegacyItems: number;
+  unverifiableLegacyItems: number;
+  activeBatch: string;
 }
 
 export interface Supplier {
@@ -122,6 +208,9 @@ export interface ReviewState {
   auditLogs: AuditLog[];
   dashboard?: DashboardStats;
   suppliers: Supplier[];
+  batches: ReviewBatch[];
+  reconsiderations: ReconsiderationItem[];
+  legacyVerifications: LegacyVerification[];
   filters: ClauseFilters;
   role: ReviewRole;
   selectedSupplierIds: string[];
@@ -129,6 +218,7 @@ export interface ReviewState {
   saving: boolean;
   error?: string;
   toast?: string;
+  toastSeverity: "success" | "warn" | "error";
 }
 
 export interface WorkspaceQueryResult {
@@ -138,6 +228,9 @@ export interface WorkspaceQueryResult {
     auditLogs: AuditLog[];
     dashboard: DashboardStats;
     suppliers: Supplier[];
+    batches: ReviewBatch[];
+    reconsiderationItems: ReconsiderationItem[];
+    legacyVerifications: LegacyVerification[];
   };
 }
 
@@ -148,6 +241,8 @@ export interface AssessmentInput {
   comment: string;
   reviewer: string;
   role: ReviewRole;
+  baseRevision?: number;
+  batchId?: string;
 }
 
 export interface ClarificationInput {
@@ -155,18 +250,107 @@ export interface ClarificationInput {
   requestText: string;
   dueAt: string;
   actor: string;
+  batchId?: string;
 }
 
 export interface ClarificationResponseInput {
   clarificationId: string;
   responseText: string;
   actor: string;
+  batchId?: string;
 }
 
 export interface FinalizeVersionInput {
   label: string;
   actor: string;
   role: ReviewRole;
+}
+
+export interface ConfirmAssessmentInput {
+  opinionId: string;
+  actor: string;
+  role: ReviewRole;
+}
+
+export interface DiscardDraftInput {
+  draftId: string;
+  actor: string;
+  role: ReviewRole;
+}
+
+export interface ApplyDraftInput {
+  draftId: string;
+  actor: string;
+  role: ReviewRole;
+  baseRevision?: number;
+}
+
+export interface ResolveReconsiderationInput {
+  reconsiderationId: string;
+  resolution: string;
+  actor: string;
+  role: ReviewRole;
+}
+
+export interface VerifyLegacyItemInput {
+  legacyId: string;
+  actor: string;
+  role: ReviewRole;
+  batchId?: string;
+}
+
+export interface ImportOpinionInput {
+  responseId: string;
+  reviewer: string;
+  role: ReviewRole;
+  decision: ComplianceStatus;
+  score: number;
+  comment: string;
+  createdAt?: string;
+}
+
+export interface ImportClarificationInput {
+  responseId: string;
+  round: number;
+  requestText: string;
+  supplierResponse?: string;
+  requestedAt: string;
+  dueAt: string;
+  respondedAt?: string;
+  status?: ClarificationStatus;
+}
+
+export interface BatchImportInput {
+  batchCode: string;
+  label: string;
+  actor: string;
+  opinions: ImportOpinionInput[];
+  clarifications: ImportClarificationInput[];
+}
+
+export interface SubmitAssessmentResult {
+  opinion: ReviewerOpinion | null;
+  draft: OpinionDraft | null;
+  conflicted: boolean;
+  currentRevision: number;
+  conflictOpinion: ReviewerOpinion | null;
+  batchId: string;
+}
+
+export interface BatchImportCounts {
+  opinionsAdded: number;
+  clarificationsAdded: number;
+  opinionsSkipped: number;
+  clarificationsSkipped: number;
+  errors: string[];
+}
+
+export interface BatchImportResult {
+  batch: ReviewBatch;
+  success: boolean;
+  recoveredFromBatchId: string | null;
+  message: string;
+  counts: BatchImportCounts;
 }
 
 export const roleProfiles: Record<ReviewRole, { name: string; label: string }> = {
@@ -194,4 +378,28 @@ export const statusSeverity: Record<ComplianceStatus, string> = {
   deviation: "danger",
   clarification: "warn",
   pending: "secondary",
+};
+
+export const lifecycleLabels: Record<OpinionLifecycle, string> = {
+  provisional: "待确认",
+  confirmed: "已确认",
+  invalidated: "已失效待重算",
+};
+
+export const batchStatusLabels: Record<BatchStatus, string> = {
+  open: "工作批次",
+  committed: "已提交",
+  failed: "导入失败",
+};
+
+export const legacyStatusLabels: Record<LegacyStatus, string> = {
+  pending: "待核",
+  verified: "已核实",
+  unverifiable: "补不齐",
+};
+
+export const legacyEntityLabels: Record<LegacyEntityType, string> = {
+  response: "供应商响应",
+  opinion: "独立意见",
+  clarification: "澄清回执",
 };

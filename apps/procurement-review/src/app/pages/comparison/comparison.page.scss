@@ -127,3 +127,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+.cell-stack .warn-copy {
+  color: #9a6200;
+}
+
+.cell-stack .invalid-copy {
+  color: #b42318;
+}

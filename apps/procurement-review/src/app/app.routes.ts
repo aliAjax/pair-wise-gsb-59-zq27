@@ -26,6 +26,14 @@ export const appRoutes: Routes = [
     title: "批量比对",
   },
   {
+    path: "batches",
+    loadComponent: () =>
+      import("./pages/batches/batches.page").then(
+        (module) => module.BatchesPage,
+      ),
+    title: "可恢复批次",
+  },
+  {
     path: "review",
     loadComponent: () =>
       import("./pages/review/review.page").then(

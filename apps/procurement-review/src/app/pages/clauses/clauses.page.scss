@@ -208,6 +208,54 @@ h4 {
   }
 }
 
+.opinion-list .invalidated-opinion {
+  border-color: #e8b4ad;
+  background: #fdf3f1;
+  opacity: 0.92;
+}
+
+.opinion-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8ea;
+  color: #74868c;
+  font-size: 11px;
+}
+
+.warn-copy {
+  color: #9a6200;
+}
+
+.danger-copy {
+  color: #b42318;
+}
+
+.draft-strip {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #f0c36a;
+  border-radius: 6px;
+  background: #fff8e8;
+
+  header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: #744600;
+  }
+
+  p {
+    margin: 8px 0;
+    color: #5d4715;
+    font-size: 13px;
+  }
+}
+
 .review-form {
   position: sticky;
   top: 92px;

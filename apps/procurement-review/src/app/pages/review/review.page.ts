@@ -19,18 +19,24 @@ import {
   roleProfiles,
   type Clarification,
   type Clause,
+  type ReconsiderationItem,
   type SupplierResponse,
 } from "../../core/models/review.models";
 import { ReviewActions } from "../../core/state/review.actions";
 import {
+  activeOpinions,
   hasReviewDifference,
+  invalidatedOpinions,
   selectClauses,
   selectPendingClarifications,
+  selectBlockingLegacyItems,
+  selectReconsiderationContexts,
   selectRole,
   selectVersions,
 } from "../../core/state/review.selectors";
 import {
   ClarificationTagComponent,
+  LifecycleTagComponent,
   StatusTagComponent,
   VersionTagComponent,
 } from "../../shared/status-tag.component";
@@ -54,6 +60,7 @@ interface PendingClarification {
     TagModule,
     TextareaModule,
     ClarificationTagComponent,
+    LifecycleTagComponent,
     StatusTagComponent,
     VersionTagComponent,
   ],
@@ -77,13 +84,24 @@ export class ReviewPage {
     this.store.select(selectPendingClarifications),
     { initialValue: [] as PendingClarification[] },
   );
+  readonly reconsiderations = toSignal(
+    this.store.select(selectReconsiderationContexts),
+    { initialValue: [] },
+  );
+  readonly blockingLegacyItems = toSignal(
+    this.store.select(selectBlockingLegacyItems),
+    { initialValue: [] },
+  );
   readonly finalizeVisible = signal(false);
   readonly responseVisible = signal(false);
+  readonly resolveVisible = signal(false);
   readonly selectedClarification = signal<PendingClarification | null>(null);
+  readonly selectedReconsideration = signal<ReconsiderationItem | null>(null);
   readonly canFinalize = computed(() => this.role() === "chair");
   readonly canRespond = computed(() =>
     ["procurement", "chair"].includes(this.role()),
   );
+  readonly canResolve = computed(() => this.role() === "chair");
   readonly differences = computed(() =>
     this.clauses().flatMap((clause) =>
       clause.responses
@@ -95,6 +113,50 @@ export class ReviewPage {
     () => this.versions().filter((version) => version.status === "finalized").length,
   );
 
+  /** 回执失效后仍未重算（无更新有效意见）的响应。 */
+  readonly unrecalculated = computed(() =>
+    this.clauses().flatMap((clause) =>
+      clause.responses
+        .filter((response) => {
+          const invalidated = invalidatedOpinions(response);
+          if (invalidated.length === 0) {
+            return false;
+          }
+          return invalidated.some((opinion) => {
+            const replacedAt = opinion.invalidatedAt
+              ? Date.parse(opinion.invalidatedAt)
+              : Date.parse(opinion.createdAt);
+            return !activeOpinions(response).some(
+              (candidate) =>
+                candidate.reviewer === opinion.reviewer &&
+                Date.parse(candidate.createdAt) >= replacedAt,
+            );
+          });
+        })
+        .map((response) => ({ clause, response })),
+    ),
+  );
+
+  readonly finalizeBlockers = computed(() => {
+    const blockers: string[] = [];
+    if (this.pendingClarifications().length) {
+      blockers.push(
+        `${this.pendingClarifications().length} 项澄清未回复或已逾期`,
+      );
+    }
+    if (this.blockingLegacyItems().length) {
+      blockers.push(
+        `${this.blockingLegacyItems().length} 项旧数据缺批次号待核（补不齐同样拦截）`,
+      );
+    }
+    if (this.unrecalculated().length) {
+      blockers.push(
+        `${this.unrecalculated().length} 个响应存在失效意见尚未重算`,
+      );
+    }
+    return blockers;
+  });
+
   readonly finalizeForm = new FormGroup({
     label: new FormControl("", {
       nonNullable: true,
@@ -103,6 +165,12 @@ export class ReviewPage {
   });
   readonly responseForm = new FormGroup({
     responseText: new FormControl("", {
+      nonNullable: true,
+      validators: [Validators.required, Validators.minLength(6)],
+    }),
+  });
+  readonly resolveForm = new FormGroup({
+    resolution: new FormControl("", {
       nonNullable: true,
       validators: [Validators.required, Validators.minLength(6)],
     }),
@@ -156,5 +224,30 @@ export class ReviewPage {
       }),
     );
     this.responseVisible.set(false);
+  }
+
+  openResolve(item: ReconsiderationItem): void {
+    this.selectedReconsideration.set(item);
+    this.resolveForm.reset({ resolution: "" });
+    this.resolveVisible.set(true);
+  }
+
+  submitResolve(): void {
+    const item = this.selectedReconsideration();
+    if (!item || !this.canResolve() || this.resolveForm.invalid) {
+      this.resolveForm.markAllAsTouched();
+      return;
+    }
+    this.store.dispatch(
+      ReviewActions.resolveReconsideration({
+        input: {
+          reconsiderationId: item.id,
+          resolution: this.resolveForm.controls.resolution.value,
+          actor: roleProfiles[this.role()].name,
+          role: this.role(),
+        },
+      }),
+    );
+    this.resolveVisible.set(false);
   }
 }

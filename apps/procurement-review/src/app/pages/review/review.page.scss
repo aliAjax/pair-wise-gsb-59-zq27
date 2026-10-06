@@ -161,6 +161,71 @@
   width: 100%;
 }
 
+.blocker-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid #e8b4ad;
+  border-radius: 7px;
+  background: #fdf3f1;
+  color: #7a2b20;
+
+  > i {
+    margin-top: 3px;
+  }
+
+  ul {
+    margin: 4px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+}
+
+.invalidated-opinion {
+  opacity: 0.75;
+  background: #fdf5f3 !important;
+}
+
+.resolution-copy {
+  margin-top: 4px;
+  color: #33565a;
+  font-size: 12px;
+}
+
+.receipt-note {
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid #17706d;
+  background: #eef6f5;
+  color: #33565a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.finalize-blockers {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e8b4ad;
+  border-radius: 5px;
+  background: #fdf3f1;
+  color: #7a2b20;
+  font-size: 12px;
+
+  ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    line-height: 1.7;
+  }
+}
+
+.block-button {
+  display: block;
+  margin-top: 6px;
+}
+
 @media (max-width: 1050px) {
   .review-grid {
     grid-template-columns: 1fr;

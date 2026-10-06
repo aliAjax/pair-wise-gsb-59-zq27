@@ -3,7 +3,8 @@
     <div>
       <h2>评审版本与小组复核</h2>
       <p>
-        保留每位评审员的独立意见；分歧进入小组复核，已定稿版本不可覆盖。
+        保留每位评审员的独立意见；回执更新后未确认意见失效重算、已确认意见保留原裁定并转复议；
+        分歧进入小组复核，已定稿版本不可覆盖。
       </p>
     </div>
     <p-button
@@ -13,6 +14,21 @@
       (onClick)="openFinalize()"
     />
   </header>
+
+  @if (finalizeBlockers().length) {
+    <div class="blocker-strip">
+      <i class="pi pi-shield"></i>
+      <div>
+        <strong>定稿拦截项</strong>
+        <ul>
+          @for (blocker of finalizeBlockers(); track blocker) {
+            <li>{{ blocker }}</li>
+          }
+        </ul>
+      </div>
+      <p-tag value="禁止定稿" severity="danger" />
+    </div>
+  }
 
   <div class="version-summary">
     <article>
@@ -37,8 +53,8 @@
     <section class="data-panel versions-panel">
       <div class="data-panel-header">
         <div>
-          <h3>版本历史</h3>
-          <p>定稿版本保存内容哈希和签署人</p>
+          <h3>版本历史（含固化批次）</h3>
+          <p>定稿版本保存内容哈希、签署人和批次检查点</p>
         </div>
       </div>
       <p-table [value]="versions()" responsiveLayout="scroll">
@@ -49,7 +65,7 @@
             <th>状态</th>
             <th>响应项</th>
             <th>内容哈希</th>
-            <th>创建信息</th>
+            <th>固化批次 / 创建信息</th>
           </tr>
         </ng-template>
         <ng-template pTemplate="body" let-version>
@@ -71,8 +87,9 @@
             </td>
             <td class="mono">{{ version.contentHash }}</td>
             <td>
-              {{ version.createdBy }}
+              <span class="mono">{{ version.batchId || "缺批次号·待核" }}</span>
               <div class="table-secondary">
+                {{ version.createdBy }} ·
                 {{ version.createdAt | date: "yyyy-MM-dd HH:mm" }}
               </div>
             </td>
@@ -107,7 +124,7 @@
                 截止 {{ item.clarification.dueAt | date: "yyyy-MM-dd HH:mm" }}
               </time>
               <p-button
-                label="登记回复"
+                label="登记回复（回执）"
                 size="small"
                 [outlined]="true"
                 [disabled]="!canRespond()"
@@ -122,11 +139,76 @@
     </aside>
   </div>
 
+  <section class="data-panel reconsideration-panel">
+    <div class="data-panel-header">
+      <div>
+        <h3>复议项（已确认意见保留原裁定）</h3>
+        <p>
+          回执到达后，已确认意见不被自动覆盖；评审组长在此结合补充材料登记复议结论。
+        </p>
+      </div>
+      <p-tag
+        [value]="reconsiderations().length + ' 项复议'"
+        [severity]="reconsiderations().length ? 'warn' : 'success'"
+      />
+    </div>
+    @if (reconsiderations().length) {
+      <p-table [value]="reconsiderations()" responsiveLayout="scroll">
+        <ng-template pTemplate="header">
+          <tr>
+            <th>编号</th>
+            <th>条款 / 供应商</th>
+            <th>原评审员</th>
+            <th>触发回执</th>
+            <th>原因与结论</th>
+            <th>操作</th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-item>
+          <tr>
+            <td class="mono">{{ item.id }}</td>
+            <td>
+              <span class="mono">{{ item.clause?.code }}</span>
+              <div class="table-secondary">
+                {{ item.response?.supplierName }}
+              </div>
+            </td>
+            <td>{{ item.reviewer }}</td>
+            <td class="mono">{{ item.clarificationId }}</td>
+            <td>
+              {{ item.reason }}
+              @if (item.resolution) {
+                <div class="resolution-copy">结论：{{ item.resolution }}</div>
+              }
+            </td>
+            <td>
+              @if (item.status === "open") {
+                <p-tag value="待复议" severity="warn" />
+                <p-button
+                  label="登记复议结论"
+                  size="small"
+                  [outlined]="true"
+                  styleClass="block-button"
+                  [disabled]="!canResolve()"
+                  (onClick)="openResolve(item)"
+                />
+              } @else {
+                <p-tag value="已处理" severity="success" />
+              }
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    } @else {
+      <p class="empty-copy">当前没有复议项。</p>
+    }
+  </section>
+
   <section class="data-panel difference-panel">
     <div class="data-panel-header">
       <div>
         <h3>小组复核队列</h3>
-        <p>分歧不能由系统自动合并，必须保留双方意见和最终处理说明。</p>
+        <p>分歧不能由系统自动合并，必须保留双方意见和最终处理说明。已失效意见不计入分歧。</p>
       </div>
       <p-tag
         [value]="differences().length + ' 项分歧'"
@@ -138,7 +220,7 @@
         <tr>
           <th>条款</th>
           <th>供应商响应</th>
-          <th>评审员意见</th>
+          <th>评审员意见（含确认状态）</th>
           <th>评分区间</th>
           <th>证明材料</th>
         </tr>
@@ -156,9 +238,10 @@
           <td>
             <div class="opinion-grid">
               @for (review of item.response.reviews; track review.id) {
-                <div>
+                <div [class.invalidated-opinion]="review.lifecycle === 'invalidated'">
                   <strong>{{ review.reviewer }}</strong>
                   <app-status-tag [status]="review.decision" />
+                  <app-lifecycle-tag [status]="review.lifecycle" />
                   <span>{{ review.score }} 分</span>
                   <p>{{ review.comment }}</p>
                 </div>
@@ -166,8 +249,9 @@
             </div>
           </td>
           <td>
-            {{ item.response.reviews[0]?.score ?? 0 }} -
-            {{ item.response.reviews[item.response.reviews.length - 1]?.score ?? 0 }}
+            @let validReviews = item.response.reviews;
+            {{ validReviews[0]?.score ?? 0 }} -
+            {{ validReviews[validReviews.length - 1]?.score ?? 0 }}
           </td>
           <td>{{ item.response.attachmentName }}</td>
         </tr>
@@ -193,8 +277,18 @@
         placeholder="例如：技术响应符合性评审汇总"
       />
     </div>
+    @if (finalizeBlockers().length) {
+      <div class="finalize-blockers">
+        <strong>以下拦截项未清除，提交将被拒绝：</strong>
+        <ul>
+          @for (blocker of finalizeBlockers(); track blocker) {
+            <li>{{ blocker }}</li>
+          }
+        </ul>
+      </div>
+    }
     <div class="finalize-note">
-      定稿前系统会检查未完成澄清。定稿后当前版本会生成内容哈希并锁定签署人。
+      定稿前系统会校验未完成澄清、失效意见重算与旧数据批次号。定稿后当前工作批次生成检查点、内容哈希并锁定签署人。
     </div>
     <div class="inline-actions dialog-actions">
       <p-button
@@ -207,14 +301,14 @@
         type="submit"
         label="签字并锁定"
         icon="pi pi-lock"
-        [disabled]="finalizeForm.invalid"
+        [disabled]="finalizeForm.invalid || finalizeBlockers().length > 0"
       />
     </div>
   </form>
 </p-dialog>
 
 <p-dialog
-  header="登记澄清回复"
+  header="登记澄清回复（供应商回执）"
   [modal]="true"
   [visible]="responseVisible()"
   (visibleChange)="responseVisible.set($event)"
@@ -238,6 +332,9 @@
         placeholder="登记补充材料、事实说明和答复时间"
       ></textarea>
     </div>
+    <p class="receipt-note">
+      回执保存后：同组待确认意见立即失效待重算；已确认意见保留原裁定并生成复议项。
+    </p>
     <div class="inline-actions dialog-actions">
       <p-button
         label="取消"
@@ -247,9 +344,50 @@
       />
       <p-button
         type="submit"
-        label="保存回复"
+        label="保存回执"
         icon="pi pi-check"
         [disabled]="responseForm.invalid"
+      />
+    </div>
+  </form>
+</p-dialog>
+
+<p-dialog
+  header="登记复议结论"
+  [modal]="true"
+  [visible]="resolveVisible()"
+  (visibleChange)="resolveVisible.set($event)"
+  [style]="{ width: 'min(560px, 94vw)' }"
+>
+  <form [formGroup]="resolveForm" (ngSubmit)="submitResolve()">
+    @if (selectedReconsideration(); as item) {
+      <div class="response-context">
+        <strong>{{ item.responseId }} · {{ item.reviewer }}</strong>
+        <p>{{ item.reason }}</p>
+      </div>
+    }
+    <div class="field">
+      <label for="resolution-text">复议结论</label>
+      <textarea
+        id="resolution-text"
+        pTextarea
+        formControlName="resolution"
+        rows="4"
+        placeholder="结合补充材料说明维持或变更原裁定的理由"
+      ></textarea>
+    </div>
+    <div class="inline-actions dialog-actions">
+      <p-button
+        label="取消"
+        severity="secondary"
+        [outlined]="true"
+        (onClick)="resolveVisible.set(false)"
+      />
+      <p-button
+        type="submit"
+        label="保存复议结论"
+        icon="pi pi-check"
+        [disabled]="resolveForm.invalid"
       />
     </div>
   </form>

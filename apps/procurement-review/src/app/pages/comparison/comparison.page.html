@@ -144,7 +144,13 @@
                   <span class="attachment" [title]="response.attachmentName">
                     {{ response.attachmentName }}
                   </span>
-                  <small>{{ response.reviews.length }} 条独立意见</small>
+                  <small>{{ activeCount(response) }} 条有效意见</small>
+                  @if (invalidatedCount(response) > 0) {
+                    <small class="invalid-copy">{{ invalidatedCount(response) }} 条已失效待重算</small>
+                  }
+                  @if (response.drafts.length) {
+                    <small class="warn-copy">{{ response.drafts.length }} 份并发草稿</small>
+                  }
                 </div>
               } @else {
                 <span class="muted">无响应</span>
